@@ -354,6 +354,21 @@ mwan3_create_iface_route()
 
 		$IP4 route flush table $id
 		$IP4 route add table $id default $route_args dev $2
+		local tid=1
+		local idx=0
+		while uci get mwan3.@interface[$idx] >/dev/null 2>&1 ; do
+			idx=$((idx+1))
+			[ x`uci get mwan3.@interface[$((idx-1))].family` = xipv4 ] && {
+				$IP4 route list table $tid | grep -q ^default || continue
+				$IP4 route list table $tid | grep -v ^default | while read line; do
+					$IP4 route del table $tid $line
+				done
+				$IP4 route list table main  | grep -v ^default | while read line; do
+					$IP4 route add table $tid $line
+				done
+				tid=$((tid+1))
+			}
+		done
 	fi
 
 	if [ "$family" == "ipv6" ] && test -n "$IP6"; then
@@ -411,7 +426,7 @@ mwan3_create_iface_rules()
 			$IP4 rule del pref $(($id+2000))
 		done
 
-		$IP4 rule add pref $(($id+1000)) iif $2 lookup main
+		$IP4 rule add pref $(($id+1000)) iif $2 lookup $id
 		$IP4 rule add pref $(($id+2000)) fwmark $(mwan3_id2mask id MMX_MASK)/$MMX_MASK lookup $id
 	fi
 
