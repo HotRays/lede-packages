@@ -264,6 +264,7 @@ define Py3Package/python3/filespec
 endef
 
 HOST_LDFLAGS += \
+	-Wl,--no-as-needed -lrt \
 	$$$$(pkg-config --static --libs libcrypto libssl)
 
 ifeq ($(HOST_OS),Linux)

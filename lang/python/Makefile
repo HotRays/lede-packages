@@ -8,36 +8,32 @@
 include $(TOPDIR)/rules.mk
 
 # For PYTHON_VERSION
-include ../python-version.mk
+include ./files/python-version.mk
 
 PKG_NAME:=python
 PKG_VERSION:=$(PYTHON_VERSION).$(PYTHON_VERSION_MICRO)
-PKG_RELEASE:=10
+PKG_RELEASE:=4
 
 PKG_SOURCE:=Python-$(PKG_VERSION).tar.xz
 PKG_SOURCE_URL:=https://www.python.org/ftp/python/$(PKG_VERSION)
-PKG_HASH:=71ffb26e09e78650e424929b2b457b9c912ac216576e6bd9e7d204ed03296a66
+PKG_MD5SUM:=53b43534153bb2a0363f08bae8b9d990
+PKG_HASH:=35d543986882f78261f97787fd3e06274bfa6df29fac9b4a94f73930ff98f731
 
 PKG_LICENSE:=PSF
 PKG_LICENSE_FILES:=LICENSE Modules/_ctypes/libffi_msvc/LICENSE Modules/_ctypes/darwin/LICENSE Modules/_ctypes/libffi/LICENSE Modules/_ctypes/libffi_osx/LICENSE Tools/pybench/LICENSE
 
 # This file provides the necsessary host build variables
-include ../python-host.mk
+include ./files/python-host.mk
 
 # For PyPackage
-include ../python-package.mk
+include ./files/python-package.mk
 
-PKG_FIXUP:=autoreconf
 PKG_INSTALL:=1
 PKG_BUILD_PARALLEL:=1
 HOST_BUILD_PARALLEL:=1
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/Python-$(PKG_VERSION)
 HOST_BUILD_DIR:=$(BUILD_DIR_HOST)/Python-$(PKG_VERSION)
-
-PKG_CONFIG_DEPENDS:= \
-	CONFIG_PACKAGE_python-setuptools CONFIG_PACKAGE_python-pip \
-	CONFIG_PYTHON_BLUETOOTH_SUPPORT
 
 PKG_BUILD_DEPENDS:=python/host
 HOST_BUILD_DEPENDS:=bzip2/host expat/host
@@ -77,11 +73,7 @@ endef
 define Package/python-light
 $(call Package/python/Default)
   TITLE:=Python $(PYTHON_VERSION) light installation
-  DEPENDS:=+python-base +libffi +libbz2 +PYTHON_BLUETOOTH_SUPPORT:bluez-libs
-endef
-
-define Package/python-light/config
-  source "$(SOURCE)/Config-python-light.in"
+  DEPENDS:=+python-base +libffi +libbz2
 endef
 
 define Package/python-light/description
@@ -100,11 +92,7 @@ define PyBasePackage
   endif
   PYTHON_LIB_FILES_DEL+=$(2)
   define PyPackage/$(1)/filespec
-    ifneq ($(2),)
-      $(subst $(space),$(newline),$(foreach lib_file,$(2),+|$(lib_file)))
-      -|/usr/lib/python$(PYTHON_VERSION)/*/test
-      -|/usr/lib/python$(PYTHON_VERSION)/*/tests
-    endif
+    $(subst $(space),$(newline),$(foreach lib_file,$(2),+|$(lib_file)))
   endef
 endef
 
@@ -142,19 +130,13 @@ PYTHON_FOR_BUILD:= \
 	_PYTHON_SYSCONFIGDATA_NAME=_sysconfigdata \
 	$(HOST_PYTHON_BIN)
 
-DISABLE_BLUETOOTH:= \
-    ac_cv_header_bluetooth_bluetooth_h=no \
-    ac_cv_header_bluetooth_h=no
-
 CONFIGURE_ARGS+= \
 	--sysconfdir=/etc \
 	--enable-shared \
 	--without-cxx-main \
 	--with-threads \
 	--with-system-ffi \
-	--with-ensurepip=no \
 	--without-pymalloc \
-	$(if $(CONFIG_PYTHON_BLUETOOTH_SUPPORT),,$(DISABLE_BLUETOOTH)) \
 	PYTHON_FOR_BUILD="$(PYTHON_FOR_BUILD)" \
 	$(ENABLE_IPV6) \
 	CONFIG_SITE="$(PKG_BUILD_DIR)/config.site" \
@@ -165,34 +147,15 @@ define Build/Prepare
 	$(CP) ./files/config.site $(PKG_BUILD_DIR)/config.site
 endef
 
-ifdef CONFIG_PACKAGE_python-setuptools
-define Build/Compile/python-setuptools
-	$(STAGING_DIR_HOSTPKG)/bin/pip install \
-		--ignore-installed \
-		--root=$(PKG_BUILD_DIR)/install-setuptools --prefix=. \
-		$(PKG_BUILD_DIR)/Lib/ensurepip/_bundled/setuptools-*.whl
-endef
-endif # CONFIG_PACKAGE_python-setuptools
-
-ifdef CONFIG_PACKAGE_python-pip
-define Build/Compile/python-pip
-	$(STAGING_DIR_HOSTPKG)/bin/pip install \
-		--ignore-installed \
-		--root=$(PKG_BUILD_DIR)/install-pip --prefix=. \
-		$(PKG_BUILD_DIR)/Lib/ensurepip/_bundled/pip-*.whl
-endef
-endif # CONFIG_PACKAGE_python-pip
-
-define Build/Compile
-	$(call Build/Compile/Default)
-	# Use host pip to install python-setuptools
-	$(call Build/Compile/python-setuptools)
-	$(call Build/Compile/python-pip)
-endef
-
 define Build/InstallDev
+	$(INSTALL_DIR) $(STAGING_DIR)/mk/
 	$(INSTALL_DIR) $(1)/usr/include/ $(1)/usr/lib/ $(1)/usr/lib/pkgconfig
 	$(INSTALL_DIR) $(1)/usr/lib/python$(PYTHON_VERSION)/
+	$(INSTALL_DATA) \
+		./files/python-package.mk \
+		./files/python-host.mk \
+		./files/python-version.mk \
+		$(STAGING_DIR)/mk/
 	$(CP) \
 		$(PKG_INSTALL_DIR)/usr/include/python$(PYTHON_VERSION) \
 		$(1)/usr/include/
@@ -257,7 +220,6 @@ $(subst $(space),$(newline),$(foreach lib_file,$(PYTHON_LIB_FILES_DEL),-|$(lib_f
 endef
 
 define PyPackage/python-base/install
-	$(INSTALL_DIR) $(1)/usr/bin $(1)/usr/lib
 	$(LN) python$(PYTHON_VERSION) $(1)/usr/bin/python
 	$(LN) python$(PYTHON_VERSION) $(1)/usr/bin/python2
 	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libpython$(PYTHON_VERSION).so* $(1)/usr/lib/
@@ -268,13 +230,7 @@ define PyPackage/python/filespec
 endef
 
 HOST_LDFLAGS += \
-	-Wl,--no-as-needed -lrt \
 	$$$$(pkg-config --static --libs libcrypto libssl)
-
-ifeq ($(HOST_OS),Linux)
-HOST_LDFLAGS += \
-	-Wl,--no-as-needed -lrt
-endif
 
 HOST_CONFIGURE_ARGS+= \
 	--without-cxx-main \
@@ -283,12 +239,8 @@ HOST_CONFIGURE_ARGS+= \
 	--prefix=$(HOST_PYTHON_DIR) \
 	--exec-prefix=$(HOST_PYTHON_DIR) \
 	--with-system-expat=$(STAGING_DIR_HOSTPKG) \
-	--with-ensurepip=install \
+	--with-system-ffi=no \
 	CONFIG_SITE=
-
-define Host/Compile
-	$(call Host/Compile/Default,python Parser/pgen sharedmods)
-endef
 
 define Host/Install
 	$(MAKE) -C $(HOST_BUILD_DIR) install
@@ -301,7 +253,6 @@ $(eval $(call HostBuild))
 $(foreach package, $(PYTHON_PACKAGES),  \
 	$(eval $(call PyPackage,$(package))) \
 	$(eval $(call BuildPackage,$(package))) \
-	$(eval $(call BuildPackage,$(package)-src)) \
 )
 
 $(eval $(call PyPackage,python-base))
@@ -311,6 +262,3 @@ $(eval $(call PyPackage,python))
 $(eval $(call BuildPackage,python-base))
 $(eval $(call BuildPackage,python-light))
 $(eval $(call BuildPackage,python))
-
-$(eval $(call BuildPackage,python-base-src))
-$(eval $(call BuildPackage,python-light-src))
